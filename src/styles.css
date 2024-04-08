@@ -18,7 +18,7 @@
   margin: 0;
   padding-top: 10vh;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   justify-content: center;
   text-align: center;
 }
@@ -34,9 +34,35 @@
   filter: drop-shadow(0 0 2em #24c8db);
 }
 
-.row {
+.row { /* row for the use tao and record purchase columns */
   display: flex;
   justify-content: center;
+  justify-content: space-evenly;
+}
+
+.col {  /* col for the use tao and record purchase columns */
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+}
+.resrow { /* row for the result columns */
+  display: flex;
+  justify-content: center;
+  justify-content: space-evenly;
+  margin-top: 1em;
+}
+.rescol { /* col for the result columns */
+  display: flex;
+  flex-direction: column;
+  margin-right: 1em;
+
+}
+
+.excel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
 }
 
 a {
@@ -57,8 +83,8 @@ input,
 button {
   border-radius: 8px;
   border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
+  padding: 0.45em 0.9em;
+  font-size: 0.75em;
   font-weight: 500;
   font-family: inherit;
   color: #0f0f0f;

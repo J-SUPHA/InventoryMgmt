@@ -95,34 +95,51 @@ function App() {
   return (
     <div className="App">
       <h1>Tauri Inventory Management</h1>
-      <button onClick={handleWriteToExcel}>Generate Excel Report</button>
-      <form onSubmit={handleRecordPurchase}>
-        <input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="Quantity" />
-        <input type="number" value={price_per_ton} onChange={(e) => set_price_per_ton(e.target.value)} placeholder="Price Per Tao" />
-        <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} />
-        <button type="submit">Record Purchase</button>
-      </form>
-      <form onSubmit={handleUseTao}>
-        <input type="number" value={quantityNeeded} onChange={(e) => setQuantityNeeded(e.target.value)} placeholder="Quantity Needed" />
-        <input type="number" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} placeholder="Selling Price" />
-        <input type="datetime-local" value={liquidationDateTime} onChange={(e) => setLiquidationDateTime(e.target.value)} placeholder="Liquidation Date" />
-        <button type="submit">Use Tao</button>
-      </form>
-      <div>
-        <h2>Inventory</h2>
-        {inventory.map((item, index) => (
-          <div key={index}>
-            Quantity: {item.quantity}, Price Per Tao: {item.orig_price}, Purchase Date: {item.purchase_date}
+      <div className="row">
+        <form onSubmit={handleRecordPurchase}>
+          <div className="col">
+            <input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} placeholder="Quantity" />
+            <input type="number" value={price_per_ton} onChange={(e) => set_price_per_ton(e.target.value)} placeholder="Price Per Tao" />
+            <input type="datetime-local" value={date} onChange={(e) => setDate(e.target.value)} />
+            <button type="submit">Record Purchase</button>
           </div>
-        ))}
+        </form>
+      
+        <form onSubmit={handleUseTao}>
+          <div className="col">
+            <input type="number" value={quantityNeeded} onChange={(e) => setQuantityNeeded(e.target.value)} placeholder="Quantity Needed" />
+            <input type="number" value={salePrice} onChange={(e) => setSalePrice(e.target.value)} placeholder="Selling Price" />
+            <input type="datetime-local" value={liquidationDateTime} onChange={(e) => setLiquidationDateTime(e.target.value)} placeholder="Liquidation Date" />
+            <button type="submit">Use Tao</button>
+          </div>
+        </form>
       </div>
-      <div>
-        <h2>Used Inventory</h2>
-        {usedInventory.map((item, index) => (
-          <div key={index}>
-            Quantity: {item.quantity}, Original Price: {item.orig_price} ,Selling Price: {item.selling_price}, Liquidation Date: {item.liquidation_date}
-          </div>
-        ))}
+      <div className="resrow">
+        <div>
+          <h2>Inventory</h2>
+          {inventory.map((item, index) => (
+            <div key={index}>
+              {item.quantity},
+              {item.orig_price},
+              {item.purchase_date}
+            </div>
+          ))}
+        </div>
+        
+          <h2>Used Inventory</h2>
+        <div className="resRow">
+          {usedInventory.map((item, index) => (
+            <div key={index}>
+              {item.quantity},
+              {item.orig_price},
+              {item.selling_price},
+              {item.liquidation_date}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="excel">
+        <button onClick={handleWriteToExcel}>Generate Excel Report</button>
       </div>
     </div>
   );
