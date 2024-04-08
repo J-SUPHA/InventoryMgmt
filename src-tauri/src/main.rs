@@ -82,7 +82,8 @@ pub fn connect_and_setup_db() -> Result<Connection> {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             quantity INTEGER NOT NULL,
             price_per_ton REAL NOT NULL,
-            purchase_date TEXT NOT NULL
+            purchase_date TEXT NOT NULL,
+            acquisition_value REAL AS (quantity * price_per_ton)
         )",
         [],
     )?;
@@ -94,32 +95,27 @@ pub fn connect_and_setup_db() -> Result<Connection> {
             quantity INTEGER NOT NULL,
             orig_price REAL NOT NULL,
             sell_price REAL NOT NULL,
-            liquidation_date TEXT NOT NULL
+            liquidation_date TEXT NOT NULL,
+            orig_value REAL AS (quantity * orig_price),
+            sell_value REAL AS (quantity * sell_price)
+        )",
+        [],
+    )?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS all_transactions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            quantity INTEGER NOT NULL,
+            price_per_ton REAL,
+            orig_price REAL,
+            sell_price REAL,
+            liquidation_date TEXT,
+            purchase_date TEXT,
+            is_used BOOLEAN NOT NULL
         )",
         [],
     )?;
 
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS purchase_transactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timber_purchase_id INTEGER NOT NULL,
-            action TEXT NOT NULL, -- 'purchase' or 'reverse_purchase'
-            transaction_date TEXT NOT NULL,
-            FOREIGN KEY(timber_purchase_id) REFERENCES timber_purchases(id)
-        )",
-        [],
-    )?;
 
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS use_transactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            used_timber_id INTEGER NOT NULL,
-            action TEXT NOT NULL, -- 'use' or 'reverse_use'
-            transaction_date TEXT NOT NULL,
-            FOREIGN KEY(used_timber_id) REFERENCES used_timber(id)
-        )",
-        [],
-    )?;
     Ok(conn)
 }
 
@@ -165,6 +161,15 @@ pub struct TaoPurchase {
     pub liquidation_date: Option<String>,
     //pub value: Option<f64>,
 }
+
+#[derive(serde::Serialize,serde::Deserialize)]
+pub struct Statistics {
+    pub acquisition_value: f64,
+    pub sell_value: f64,
+    pub orig_value: f64,
+}
+
+
 #[tauri::command]
 fn print_inventory() -> Result<Vec<TaoPurchase>, AppError> {
     let conn = connect_and_setup_db()?;
@@ -214,6 +219,34 @@ fn print_inventory_used() -> Result<Vec<TaoPurchase>, AppError> {
 
     Ok(items)
 }
+
+
+#[tauri::command]
+fn inventory_statistics()  -> Result<Statistics, AppError> {
+    let conn = connect_and_setup_db()?;
+    let acquisition_value: f64 = conn.query_row(
+        "SELECT SUM(quantity * price_per_ton) FROM timber_purchases",
+        [],
+        |row| row.get(0),
+    )?;
+    println!("Acquisition value: {}", acquisition_value);
+    let orig_value: f64 = conn.query_row(
+        "SELECT SUM(quantity * orig_price) FROM used_timber",
+        [],
+        |row| row.get(0),
+    )?;
+    let sell_value: f64 = conn.query_row(
+        "SELECT SUM(quantity * sell_price) FROM used_timber",
+        [],
+        |row| row.get(0),
+    )?;
+    Ok(Statistics {
+        acquisition_value,
+        sell_value,
+        orig_value,
+    })
+}
+
 
 #[tauri::command]
 fn use_tao(quantity_needed: i32, liquidation_date_time: DateTime, selling_price : f64) -> Result<Vec<Spec>, AppError> {
@@ -316,14 +349,26 @@ fn write_timber_purchases(conn: &Connection, sheet: &mut Worksheet) -> Result<()
             row.get::<_, String>(3)?,
         ))
     })?;
-    
+    let mut num = 0;
     for (row_num, timber) in timber_iter.enumerate() {
         let (id, quantity, price_per_ton, purchase_date) = timber?;
         sheet.write_number(row_num as u32 + 1, 0, id.into(), None);
         sheet.write_number(row_num as u32 + 1, 1, quantity.into(), None);
         sheet.write_number(row_num as u32 + 1, 2, price_per_ton, None);
         sheet.write_string(row_num as u32 + 1, 3, &purchase_date, None);
+        num = row_num +1 ;
     }
+
+    sheet.write_string(num as u32 + 3, 0, "Inventory Value", None);
+    let res = inventory_statistics();
+    let stats = match res {
+        Ok(stats) => stats,
+        Err(_) => return Err(AppError::DatabaseError(rusqlite::Error::QueryReturnedNoRows)),
+    };
+    sheet.write_number(num as u32 + 3, 1, stats.acquisition_value, None);
+
+
+
 
     Ok(())
 }
@@ -339,6 +384,7 @@ fn write_used_timber(conn: &Connection, sheet: &mut Worksheet) -> Result<(), App
             row.get::<_, String>(4)?,
         ))
     })?;
+    let mut num = 0;
     for (row_num, timber) in timber_iter.enumerate() {
         let (id, quantity, price_per_ton, total_price, liquidation_date) = timber?;
         sheet.write_number(row_num as u32 + 1, 0, id.into(), None);
@@ -346,14 +392,24 @@ fn write_used_timber(conn: &Connection, sheet: &mut Worksheet) -> Result<(), App
         sheet.write_number(row_num as u32 + 1, 2, price_per_ton, None);
         sheet.write_number(row_num as u32 + 1, 3, total_price, None);
         sheet.write_string(row_num as u32 + 1, 4, &liquidation_date, None);
+        num = row_num +1 ;
     }
-
+    sheet.write_string(num as u32 + 3, 0, "Inventory Orig Value", None);
+    let res = inventory_statistics();
+    let stats = match res {
+        Ok(stats) => stats,
+        Err(_) => return Err(AppError::DatabaseError(rusqlite::Error::QueryReturnedNoRows)),
+    };
+    sheet.write_number(num as u32 + 3, 2, stats.orig_value, None);
+    sheet.write_string(num as u32 + 4, 0, "Inventory Liquation Value", None);
+    sheet.write_number(num as u32 + 4, 2, stats.sell_value, None);
+    
     Ok(())
 }
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![greet, record_purchase, print_inventory, print_inventory_used, use_tao, write_inventory_to_excel])
+        .invoke_handler(tauri::generate_handler![greet, record_purchase, print_inventory, print_inventory_used, use_tao, write_inventory_to_excel, inventory_statistics])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

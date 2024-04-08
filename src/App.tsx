@@ -10,6 +10,12 @@ interface TaoPurchase {
   liquidation_date: string | null;
 }
 
+interface Statistics {
+  acquisition_value: number;
+  sell_value: number;
+  orig_value: number;
+}
+
 interface Spec {
   quantity: number;
   orig_price: number;
@@ -20,6 +26,7 @@ interface Spec {
 function App() {
   const [inventory, setInventory] = useState<TaoPurchase[]>([]);
   const [usedInventory, setUsedInventory] = useState<TaoPurchase[]>([]);
+  const [stats, setStats] = useState<Statistics>();
   const [quantityNeeded, setQuantityNeeded] = useState('');
   const [liquidationDateTime, setLiquidationDateTime] = useState('');
   const [quantity, setQuantity] = useState('');
@@ -30,11 +37,18 @@ function App() {
   useEffect(() => {
     fetchInventory();
     fetchUsedInventory();
+    fetchStats();
+
   }, []);
 
   async function fetchInventory() {
     const inventory = await invoke("print_inventory") as TaoPurchase[];
     setInventory(inventory);
+  }
+  async function fetchStats() {
+    const inventory = await invoke("inventory_statistics") as Statistics;
+    console.log(inventory);
+    setStats(inventory);
   }
 
   async function handleWriteToExcel() {
@@ -115,27 +129,70 @@ function App() {
         </form>
       </div>
       <div className="resrow">
-        <div>
+        <div className="rescol">
           <h2>Inventory</h2>
-          {inventory.map((item, index) => (
-            <div key={index}>
-              {item.quantity},
-              {item.orig_price},
-              {item.purchase_date}
-            </div>
-          ))}
+          <table>
+            <thead>
+              <tr>
+                <th>Quantity</th>
+                <th>Original Price</th>
+                <th>Purchase Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {inventory.map((item, index) => (
+                <tr key={index}>
+                  <td>{item.quantity}</td>
+                  <td>{item.orig_price}</td>
+                  <td>{item.purchase_date}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
         
+        <div className="rescol">
           <h2>Used Inventory</h2>
-        <div className="resRow">
-          {usedInventory.map((item, index) => (
-            <div key={index}>
-              {item.quantity},
-              {item.orig_price},
-              {item.selling_price},
-              {item.liquidation_date}
-            </div>
-          ))}
+          <table>
+            <thead>
+              <tr>
+                <th>Quantity</th>
+                <th>Original Price</th>
+                <th>Selling Price</th>
+                <th>Liquidation Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {usedInventory.map((item, index) => (
+                <tr key={index}>
+                  <td>{item.quantity}</td>
+                  <td>{item.orig_price}</td>
+                  <td>{item.selling_price}</td>
+                  <td>{item.liquidation_date}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="resrow">
+        <div className="rescol">
+          <table>
+              <thead>
+                <tr>
+                  <th>Inventory Value</th>
+                  <th>Used Aquistion Value</th>
+                  <th>Used Liquidation Value</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{stats?.acquisition_value}</td>
+                  <td>{stats?.orig_value}</td>
+                  <td>{stats?.sell_value}</td>
+                </tr>  
+              </tbody>
+          </table>
         </div>
       </div>
       <div className="excel">

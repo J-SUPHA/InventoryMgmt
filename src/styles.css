@@ -57,6 +57,21 @@
   margin-right: 1em;
 
 }
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1em;
+}
+
+th, td {
+  text-align: center;
+  padding: 8px;
+  border-bottom: 1px solid #ddd;
+}
+
+th {
+
+}
 
 .excel {
   display: flex;
@@ -76,6 +91,9 @@ a:hover {
 }
 
 h1 {
+  text-align: center;
+}
+h2 {
   text-align: center;
 }
 
