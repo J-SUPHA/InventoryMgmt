@@ -33,7 +33,7 @@ impl From<AppError> for tauri::InvokeError {
 
 #[derive(Debug, Clone,serde::Serialize,serde::Deserialize)]
 pub struct Spec {
-    quantity: i32,
+    quantity: f32,
     orig_price: f64,
     sale_price: f64,
     liquidation_date: String,
@@ -80,7 +80,7 @@ pub fn connect_and_setup_db() -> Result<Connection> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS timber_purchases (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            quantity INTEGER NOT NULL,
+            quantity REAL NOT NULL,
             price_per_ton REAL NOT NULL,
             purchase_date TEXT NOT NULL,
             acquisition_value REAL AS (quantity * price_per_ton)
@@ -92,7 +92,7 @@ pub fn connect_and_setup_db() -> Result<Connection> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS used_timber (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            quantity INTEGER NOT NULL,
+            quantity REAL NOT NULL,
             orig_price REAL NOT NULL,
             sell_price REAL NOT NULL,
             liquidation_date TEXT NOT NULL,
@@ -104,7 +104,7 @@ pub fn connect_and_setup_db() -> Result<Connection> {
     conn.execute(
         "CREATE TABLE IF NOT EXISTS all_transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            quantity INTEGER NOT NULL,
+            quantity REAL NOT NULL,
             price_per_ton REAL,
             orig_price REAL,
             sell_price REAL,
@@ -122,7 +122,7 @@ pub fn connect_and_setup_db() -> Result<Connection> {
 // Adjusted to accept date_time as a parameter in the format "DD-MM-YYYY HH:MM:SS"
 
 #[tauri::command]
-fn record_purchase(quantity: i32, price_per_ton: f64, date_time: DateTime) -> String {
+fn record_purchase(quantity: f32, price_per_ton: f64, date_time: DateTime) -> String {
     println!("Recording things here");
     let conn_result = connect_and_setup_db();
     let conn = match conn_result {
@@ -143,18 +143,20 @@ fn record_purchase(quantity: i32, price_per_ton: f64, date_time: DateTime) -> St
 }
 
 #[tauri::command]
-fn check_inventory(quantity_needed: i32) -> Result<bool> {
+fn check_inventory(quantity_needed: f32) -> Result<bool> {
     let conn = connect_and_setup_db()?;
-    let total_quantity: i32 = conn.query_row(
+
+    let total_quantity: f32 = conn.query_row(
         "SELECT SUM(quantity) FROM timber_purchases",
         [],
         |row| row.get(0),
     )?;
+
     Ok(total_quantity >= quantity_needed)
 }
 #[derive(serde::Serialize,serde::Deserialize)]
 pub struct TaoPurchase {
-    pub quantity: Option<i32>,
+    pub quantity: Option<f32>,
     pub orig_price: Option<f64>,
     pub selling_price: Option<f64>,
     pub purchase_date: Option<String>,
@@ -173,7 +175,7 @@ pub struct Statistics {
 #[tauri::command]
 fn print_inventory() -> Result<Vec<TaoPurchase>, AppError> {
     let conn = connect_and_setup_db()?;
-    let mut stmt = conn.prepare("SELECT id, quantity, price_per_ton, purchase_date FROM timber_purchases")?;
+    let mut stmt = conn.prepare("SELECT id, ROUND(quantity, 2), price_per_ton, purchase_date FROM timber_purchases")?;
     let timber_iter = stmt.query_map([], |row| {
         Ok(TaoPurchase {
             quantity: row.get(1)?,
@@ -224,22 +226,28 @@ fn print_inventory_used() -> Result<Vec<TaoPurchase>, AppError> {
 #[tauri::command]
 fn inventory_statistics()  -> Result<Statistics, AppError> {
     let conn = connect_and_setup_db()?;
+
+
     let acquisition_value: f64 = conn.query_row(
-        "SELECT SUM(quantity * price_per_ton) FROM timber_purchases",
+        "SELECT ROUND(COALESCE(SUM(acquisition_value), 0), 2) FROM timber_purchases",
         [],
         |row| row.get(0),
     )?;
-    println!("Acquisition value: {}", acquisition_value);
+
     let orig_value: f64 = conn.query_row(
-        "SELECT SUM(quantity * orig_price) FROM used_timber",
+        "SELECT ROUND(COALESCE(SUM(orig_value), 0), 2) FROM used_timber",
         [],
         |row| row.get(0),
     )?;
+
+    
+    
     let sell_value: f64 = conn.query_row(
-        "SELECT SUM(quantity * sell_price) FROM used_timber",
+        "SELECT ROUND(COALESCE(SUM(sell_value), 0), 2) FROM used_timber",
         [],
         |row| row.get(0),
     )?;
+
     Ok(Statistics {
         acquisition_value,
         sell_value,
@@ -249,7 +257,7 @@ fn inventory_statistics()  -> Result<Statistics, AppError> {
 
 
 #[tauri::command]
-fn use_tao(quantity_needed: i32, liquidation_date_time: DateTime, selling_price : f64) -> Result<Vec<Spec>, AppError> {
+fn use_tao(quantity_needed: f32, liquidation_date_time: DateTime, selling_price : f64) -> Result<Vec<Spec>, AppError> {
     let conn = connect_and_setup_db()?;
 
     if check_inventory(quantity_needed) == Ok(false) {
@@ -264,11 +272,11 @@ fn use_tao(quantity_needed: i32, liquidation_date_time: DateTime, selling_price 
 
     while let Some(row) = rows.next()? {
         let id: i32 = row.get(0)?;
-        let quantity: i32 = row.get(1)?;
+        let quantity: f32 = row.get(1)?;
         let orig_price: f64 = row.get(2)?;
 
         let used_quantity = if quantity <= remaining_quantity { quantity } else { remaining_quantity };
-        let total_price = used_quantity as f64 * orig_price;
+        let _total_price = used_quantity as f64 * orig_price;
 
         if used_quantity == quantity {
             // Use up the entire batch and delete it
@@ -295,10 +303,10 @@ fn use_tao(quantity_needed: i32, liquidation_date_time: DateTime, selling_price 
         });
 
         remaining_quantity -= used_quantity;
-        if remaining_quantity <= 0 { break; }
+        if remaining_quantity <= 0.0 { break; }
     }
 
-    if remaining_quantity > 0 {
+    if remaining_quantity > 0.0 {
         println!("Warning: Not enough timber in inventory. Missing {} tonnes.", remaining_quantity);
     }
 
@@ -352,20 +360,20 @@ fn write_timber_purchases(conn: &Connection, sheet: &mut Worksheet) -> Result<()
     let mut num = 0;
     for (row_num, timber) in timber_iter.enumerate() {
         let (id, quantity, price_per_ton, purchase_date) = timber?;
-        sheet.write_number(row_num as u32 + 1, 0, id.into(), None);
-        sheet.write_number(row_num as u32 + 1, 1, quantity.into(), None);
-        sheet.write_number(row_num as u32 + 1, 2, price_per_ton, None);
-        sheet.write_string(row_num as u32 + 1, 3, &purchase_date, None);
+        let _ = sheet.write_number(row_num as u32 + 1, 0, id.into(), None);
+        let _ =sheet.write_number(row_num as u32 + 1, 1, quantity.into(), None);
+        let _ =sheet.write_number(row_num as u32 + 1, 2, price_per_ton, None);
+        let _ =sheet.write_string(row_num as u32 + 1, 3, &purchase_date, None);
         num = row_num +1 ;
     }
 
-    sheet.write_string(num as u32 + 3, 0, "Inventory Value", None);
+    let _ =sheet.write_string(num as u32 + 3, 0, "Inventory Value", None);
     let res = inventory_statistics();
     let stats = match res {
         Ok(stats) => stats,
         Err(_) => return Err(AppError::DatabaseError(rusqlite::Error::QueryReturnedNoRows)),
     };
-    sheet.write_number(num as u32 + 3, 1, stats.acquisition_value, None);
+    let _ =sheet.write_number(num as u32 + 3, 1, stats.acquisition_value, None);
 
 
 
@@ -387,22 +395,22 @@ fn write_used_timber(conn: &Connection, sheet: &mut Worksheet) -> Result<(), App
     let mut num = 0;
     for (row_num, timber) in timber_iter.enumerate() {
         let (id, quantity, price_per_ton, total_price, liquidation_date) = timber?;
-        sheet.write_number(row_num as u32 + 1, 0, id.into(), None);
-        sheet.write_number(row_num as u32 + 1, 1, quantity.into(), None);
-        sheet.write_number(row_num as u32 + 1, 2, price_per_ton, None);
-        sheet.write_number(row_num as u32 + 1, 3, total_price, None);
-        sheet.write_string(row_num as u32 + 1, 4, &liquidation_date, None);
+        let _ =sheet.write_number(row_num as u32 + 1, 0, id.into(), None);
+        let _ =sheet.write_number(row_num as u32 + 1, 1, quantity.into(), None);
+        let _ =sheet.write_number(row_num as u32 + 1, 2, price_per_ton, None);
+        let _ =sheet.write_number(row_num as u32 + 1, 3, total_price, None);
+        let _ =sheet.write_string(row_num as u32 + 1, 4, &liquidation_date, None);
         num = row_num +1 ;
     }
-    sheet.write_string(num as u32 + 3, 0, "Inventory Orig Value", None);
+    let _ =sheet.write_string(num as u32 + 3, 0, "Inventory Orig Value", None);
     let res = inventory_statistics();
     let stats = match res {
         Ok(stats) => stats,
         Err(_) => return Err(AppError::DatabaseError(rusqlite::Error::QueryReturnedNoRows)),
     };
-    sheet.write_number(num as u32 + 3, 2, stats.orig_value, None);
-    sheet.write_string(num as u32 + 4, 0, "Inventory Liquation Value", None);
-    sheet.write_number(num as u32 + 4, 2, stats.sell_value, None);
+    let _ =sheet.write_number(num as u32 + 3, 2, stats.orig_value, None);
+    let _ =sheet.write_string(num as u32 + 4, 0, "Inventory Liquation Value", None);
+    let _ =sheet.write_number(num as u32 + 4, 2, stats.sell_value, None);
     
     Ok(())
 }

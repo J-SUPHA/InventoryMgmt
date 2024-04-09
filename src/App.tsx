@@ -68,7 +68,7 @@ function App() {
     let time_whole = dateTimeParts[2].split("T")[1];
     let time = time_whole.split(":");
     await invoke("record_purchase", { 
-      quantity: parseInt(quantity), 
+      quantity: parseFloat(quantity), 
       pricePerTon: parseFloat(price_per_ton), 
       dateTime: {
         year: parseInt(dateTimeParts[0]), 
@@ -91,7 +91,7 @@ function App() {
     let time = time_whole.split(":");
 
     await invoke("use_tao", { 
-      quantityNeeded: parseInt(quantityNeeded), 
+      quantityNeeded: parseFloat(quantityNeeded), 
       liquidationDateTime: {
         year: parseInt(dateTimeParts[0]), 
         month: parseInt(dateTimeParts[1]), 
@@ -142,7 +142,7 @@ function App() {
             <tbody>
               {inventory.map((item, index) => (
                 <tr key={index}>
-                  <td>{item.quantity}</td>
+                  <td>{item.quantity ? parseFloat(item.quantity.toFixed(2)) : '0.00'}</td>
                   <td>{item.orig_price}</td>
                   <td>{item.purchase_date}</td>
                 </tr>
@@ -165,7 +165,7 @@ function App() {
             <tbody>
               {usedInventory.map((item, index) => (
                 <tr key={index}>
-                  <td>{item.quantity}</td>
+                  <td>{item.quantity ? parseFloat(item.quantity.toFixed(2)) : '0.00'}</td>
                   <td>{item.orig_price}</td>
                   <td>{item.selling_price}</td>
                   <td>{item.liquidation_date}</td>
