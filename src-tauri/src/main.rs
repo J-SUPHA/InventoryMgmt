@@ -229,13 +229,13 @@ fn inventory_statistics()  -> Result<Statistics, AppError> {
 
 
     let acquisition_value: f64 = conn.query_row(
-        "SELECT ROUND(COALESCE(SUM(acquisition_value), 0), 2) FROM timber_purchases",
+        "SELECT COALESCE(SUM(acquisition_value),0) FROM timber_purchases",
         [],
         |row| row.get(0),
     )?;
 
     let orig_value: f64 = conn.query_row(
-        "SELECT ROUND(COALESCE(SUM(orig_value), 0), 2) FROM used_timber",
+        "SELECT ROUND(COALESCE(SUM(orig_value),0), 2) FROM used_timber",
         [],
         |row| row.get(0),
     )?;
