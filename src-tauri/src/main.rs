@@ -246,6 +246,31 @@ fn add_transaction(quantity: f32, price_per_ton: f64, orig_price: f64, sell_pric
 }
 
 #[tauri::command]
+fn show_all_transactions() -> Result<Vec<AllTransactions>, AppError> {
+    let conn = connect_and_setup_db()?;
+    let mut stmt = conn.prepare("SELECT * FROM all_transactions")?;
+    let transaction_iter = stmt.query_map([], |row| {
+        Ok(AllTransactions {
+            id: row.get(0)?,
+            quantity: row.get(1)?,
+            price_per_ton: row.get(2)?,
+            orig_price: row.get(3)?,
+            sell_price: row.get(4)?,
+            liquidation_date: row.get(5)?,
+            purchase_date: row.get(6)?,
+            is_used: row.get(7)?,
+        })
+    })?;
+
+    let mut transactions = Vec::new();
+    for transaction in transaction_iter {
+        let txn = transaction?;
+        transactions.push(txn);
+    }
+    return Ok(transactions);
+}
+
+#[tauri::command]
 fn remove_transaction_via_id(id: i32) -> String {
     let conn_result = connect_and_setup_db();
     let conn = match conn_result {
@@ -567,12 +592,7 @@ fn write_used_timber(conn: &Connection, sheet: &mut Worksheet) -> Result<(), App
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![greet, record_purchase, print_inventory, print_inventory_used, use_tao, write_inventory_to_excel, inventory_statistics, redo_transactions, add_transaction, remove_transaction_via_id, add_transaction, edit_transaction_via_id])
+        .invoke_handler(tauri::generate_handler![greet, record_purchase, print_inventory, print_inventory_used, use_tao, write_inventory_to_excel, inventory_statistics, redo_transactions, add_transaction, remove_transaction_via_id, add_transaction, edit_transaction_via_id, show_all_transactions])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-
-
-
-
-
