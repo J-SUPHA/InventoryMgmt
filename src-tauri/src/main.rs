@@ -48,6 +48,14 @@ pub struct DateTime {
     second: u32,
 }
 
+#[derive(Debug, Clone,serde::Serialize,serde::Deserialize)]
+pub enum TransactionType {
+    Remove,
+    Edit,
+    Add,
+
+}
+
 impl DateTime {
     fn to_string(&self) -> String {
         format!(
@@ -75,6 +83,19 @@ impl DateTime {
 
 pub fn connect_and_setup_db() -> Result<Connection> {
     let conn = Connection::open("/Users/j-supha/desktop/Tao_Inventory.db")?;
+    conn.execute(
+    "CREATE TABLE IF NOT EXISTS app_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        usage_type INTEGER NOT NULL
+    )",
+    [],
+    )?;
+    // Attempt to insert the default setting without checking if the table is empty
+    // This will insert the row if the table is empty, and do nothing if the row already exists
+    conn.execute(
+        "INSERT OR IGNORE INTO app_settings (id, usage_type) VALUES (1, 1)",
+        [],
+    )?;
 
     // Existing table creation for timber_purchases
     conn.execute(
@@ -136,6 +157,64 @@ fn record_purchase(quantity: f32, price_per_ton: f64, date_time: DateTime) -> St
         params![quantity, price_per_ton, date_time_str],
     );
     println!("Executed query");
+    match execute_result {
+        Ok(_) => "Completed".to_string(),
+        Err(e) => format!("Error executing database operation: {}", e),
+    }
+}
+
+#[tauri::command]
+fn add_transaction(quantity: f32, price_per_ton: f64, orig_price: f64, sell_price: f64, purchase_date: DateTime, liquidation_date: DateTime, is_used: bool) -> String {
+    println!("Recording things here");
+    let conn_result = connect_and_setup_db();
+    let conn = match conn_result {
+        Ok(conn) => conn,
+        Err(e) => return format!("Error connecting to database: {}", e),
+    };
+    println!("Connected to database");
+    let purchase_date_str = purchase_date.to_string();
+    let liquidation_date_str = liquidation_date.to_string();
+    let execute_result = conn.execute(
+        "INSERT INTO all_transactions (quantity, price_per_ton, orig_price, sell_price, purchase_date, liquidation_date, is_used) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![quantity, price_per_ton, orig_price, sell_price, purchase_date_str, liquidation_date_str, is_used],
+    );
+    println!("Executed query");
+    match execute_result {
+        Ok(_) => "Completed".to_string(),
+        Err(e) => format!("Error executing database operation: {}", e),
+    }
+}
+
+#[tauri::command]
+fn remove_transaction_via_id(id: i32) -> String {
+    let conn_result = connect_and_setup_db();
+    let conn = match conn_result {
+        Ok(conn) => conn,
+        Err(e) => return format!("Error connecting to database: {}", e),
+    };
+    let execute_result = conn.execute(
+        "DELETE FROM all_transactions WHERE id = ?1",
+        params![id],
+    );
+    match execute_result {
+        Ok(_) => "Completed".to_string(),
+        Err(e) => format!("Error executing database operation: {}", e),
+    }
+}
+
+#[tauri::command]
+fn edit_transaction_via_id(id: i32, quantity: f32, price_per_ton: f64, orig_price: f64, sell_price: f64, purchase_date: DateTime, liquidation_date: DateTime, is_used: bool) -> String {
+    let conn_result = connect_and_setup_db();
+    let conn = match conn_result {
+        Ok(conn) => conn,
+        Err(e) => return format!("Error connecting to database: {}", e),
+    };
+    let purchase_date_str = purchase_date.to_string();
+    let liquidation_date_str = liquidation_date.to_string();
+    let execute_result = conn.execute(
+        "UPDATE all_transactions SET quantity = ?1, price_per_ton = ?2, orig_price = ?3, sell_price = ?4, purchase_date = ?5, liquidation_date = ?6, is_used = ?7 WHERE id = ?8",
+        params![quantity, price_per_ton, orig_price, sell_price, purchase_date_str, liquidation_date_str, is_used, id],
+    );
     match execute_result {
         Ok(_) => "Completed".to_string(),
         Err(e) => format!("Error executing database operation: {}", e),
@@ -266,8 +345,19 @@ fn use_tao(quantity_needed: f32, liquidation_date_time: DateTime, selling_price 
     }
     let mut remaining_quantity = quantity_needed;
     let mut used_timber = Vec::new();
+    let mut style: i64 = conn.query_row(
+        "SELECT usage_type FROM app_settings WHERE id = 1", 
+        [], 
+        |row| row.get(0)
+    )?;
 
-    let mut stmt = conn.prepare("SELECT id, quantity, price_per_ton FROM timber_purchases ORDER BY price_per_ton DESC")?; // HIFO Implemenetation - can change to LIFO or FIFO accordingly
+    let mut stmt = match(style) {
+        1 => conn.prepare("SELECT id, quantity, price_per_ton FROM timber_purchases ORDER BY purchase_date ASC")?, // FIFO Implementation
+        2 => conn.prepare("SELECT id, quantity, price_per_ton FROM timber_purchases ORDER BY purchase_date DESC")?, // LIFO Implementation
+        3 => conn.prepare("SELECT id, quantity, price_per_ton FROM timber_purchases ORDER BY price_per_ton ASC")?, // LOFO Implementation
+        _ => conn.prepare("SELECT id, quantity, price_per_ton FROM timber_purchases ORDER BY price_per_ton DESC")?, // HIFO Implemenetation - can change to LIFO or FIFO accordingly
+    };
+    
     let mut rows = stmt.query([])?;
 
     while let Some(row) = rows.next()? {
