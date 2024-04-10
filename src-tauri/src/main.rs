@@ -153,7 +153,7 @@ pub fn connect_and_setup_db() -> Result<Connection> {
 
 
 #[tauri::command]
-fn redo_transactions() -> Result<(), AppError> {
+fn redo_transactions() -> Result<(), AppError> { // clear the timber_purchases and used_timber tables and reprocess all_transactions and reinsert into timber_purchases and used_timber
     let conn = connect_and_setup_db()?;
     conn.execute("DELETE FROM timber_purchases", [])?;
     conn.execute("DELETE FROM used_timber", [])?;
@@ -203,24 +203,30 @@ fn redo_transactions() -> Result<(), AppError> {
 }
 
 #[tauri::command]
-fn record_purchase(quantity: f32, price_per_ton: f64, date_time: DateTime) -> String {
-    println!("Recording things here");
+fn record_purchase(quantity: f32, price_per_ton: f64, date_time: DateTime) -> Result<(),AppError> { // need to add part of this method to insert the transactions here as well 
+
     let conn_result = connect_and_setup_db();
     let conn = match conn_result {
         Ok(conn) => conn,
-        Err(e) => return format!("Error connecting to database: {}", e),
+        Err(e) => return Err(AppError::DatabaseError(e)),
     };
-    println!("Connected to database");
+
     let date_time_str = date_time.to_string();
-    let execute_result = conn.execute(
+    let _execute_result = conn.execute(
         "INSERT INTO timber_purchases (quantity, price_per_ton, purchase_date) VALUES (?1, ?2, ?3)",
         params![quantity, price_per_ton, date_time_str],
     );
-    println!("Executed query");
-    match execute_result {
-        Ok(_) => "Completed".to_string(),
-        Err(e) => format!("Error executing database operation: {}", e),
+
+    
+    let execute_all_transactions = conn.execute(
+        "INSERT INTO all_transactions (quantity, price_per_ton, purchase_date, is_used) VALUES (?1, ?2, ?3, ?4)",
+        params![quantity, price_per_ton, date_time_str, false],
+    );
+    match execute_all_transactions {
+        Ok(_) => Ok(()),
+        Err(e) => return Err(AppError::DatabaseError(e)),
     }
+
 }
 
 #[tauri::command]
@@ -424,6 +430,11 @@ fn inventory_statistics()  -> Result<Statistics, AppError> {
 fn use_tao(quantity_needed: f32, liquidation_date_time: DateTime, selling_price : f64) -> Result<Vec<Spec>, AppError> {
     let conn = connect_and_setup_db()?;
 
+    let _execute_result = conn.execute(
+        "INSERT INTO all_transactions (quantity, sell_price, liquidation_date, is_used) VALUES (?1, ?2, ?3, ?4)",
+        params![quantity_needed, selling_price, liquidation_date_time.to_string(), true],
+    );
+
     if check_inventory(quantity_needed) == Ok(false) {
         println!("Not enough timber in inventory.");
         return Ok(Vec::new());
@@ -549,9 +560,6 @@ fn write_timber_purchases(conn: &Connection, sheet: &mut Worksheet) -> Result<()
         Err(_) => return Err(AppError::DatabaseError(rusqlite::Error::QueryReturnedNoRows)),
     };
     let _ =sheet.write_number(num as u32 + 3, 1, stats.acquisition_value, None);
-
-
-
 
     Ok(())
 }

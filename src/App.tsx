@@ -10,6 +10,16 @@ interface TaoPurchase {
   liquidation_date: string | null;
 }
 
+interface AllTransactions {
+  id: number | null;
+  quantity: number | null;
+  orig_price: number | null;
+  selling_price: number | null;
+  purchase_date: string | null;
+  liquidation_date: string | null;
+  is_used: boolean;
+}
+
 interface Statistics {
   acquisition_value: number;
   sell_value: number;
@@ -33,11 +43,15 @@ function App() {
   const [salePrice, setSalePrice] = useState('');
   const [price_per_ton, set_price_per_ton] = useState('');
   const [date, setDate] = useState('');
+  const [showPopup, setShowPopup] = useState(false);
+  const [transactions, setTransactions] = useState<AllTransactions[]>([]);
+  const [editingTransaction, setEditingTransaction] = useState<AllTransactions | null>(null);
 
   useEffect(() => {
     fetchInventory();
     fetchUsedInventory();
     fetchStats();
+    fetchAllTransactions();
 
   }, []);
 
@@ -45,6 +59,34 @@ function App() {
     const inventory = await invoke("print_inventory") as TaoPurchase[];
     setInventory(inventory);
   }
+  const fetchAllTransactions = async () => {
+    const allTransactions = await invoke("show_all_transactions") as AllTransactions[];
+    console.log("These are all my transactions ",allTransactions);
+    setTransactions(allTransactions);
+  };
+
+  const handleDeleteTransaction = async (id: number) => {
+    await invoke("remove_transaction_via_id", { id });
+    fetchAllTransactions();
+  };
+
+  const handleEditTransactionStart = (transaction: AllTransactions) => {
+    setEditingTransaction(transaction);
+    setShowPopup(true);
+  };
+
+  const handleApplyChanges = async () => {
+    // Logic to add or edit a transaction based on `editingTransaction`
+    // For example, if editingTransaction is null, add a new transaction
+    // Otherwise, edit the existing transaction in the database
+
+    // After applying changes, refresh and close the popup
+    await invoke("redo_transactions");
+    fetchAllTransactions();
+    setShowPopup(false);
+    setEditingTransaction(null); // Reset editing state
+  };
+
   async function fetchStats() {
     const inventory = await invoke("inventory_statistics") as Statistics;
     console.log(inventory);
@@ -118,7 +160,7 @@ function App() {
             <button type="submit">Record Purchase</button>
           </div>
         </form>
-      
+
         <form onSubmit={handleUseTao}>
           <div className="col">
             <input type="number" value={quantityNeeded} onChange={(e) => setQuantityNeeded(e.target.value)} placeholder="Quantity Needed" />
@@ -150,7 +192,7 @@ function App() {
             </tbody>
           </table>
         </div>
-        
+
         <div className="rescol">
           <h2>Used Inventory</h2>
           <table>
@@ -178,28 +220,47 @@ function App() {
       <div className="resrow">
         <div className="rescol">
           <table>
-              <thead>
-                <tr>
-                  <th>Inventory Value</th>
-                  <th>Used Aquistion Value</th>
-                  <th>Used Liquidation Value</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>{stats?.acquisition_value}</td>
-                  <td>{stats?.orig_value}</td>
-                  <td>{stats?.sell_value}</td>
-                </tr>  
-              </tbody>
+            <thead>
+              <tr>
+                <th>Inventory Value</th>
+                <th>Used Acquisition Value</th>
+                <th>Used Liquidation Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>{stats?.acquisition_value}</td>
+                <td>{stats?.orig_value}</td>
+                <td>{stats?.sell_value}</td>
+              </tr>
+            </tbody>
           </table>
         </div>
       </div>
       <div className="excel">
         <button onClick={handleWriteToExcel}>Generate Excel Report</button>
       </div>
+      <button onClick={() => setShowPopup(true)}>View & Manage Transactions</button>
+      {showPopup && (
+        <div className="popup">
+          <h2>All Transactions</h2>
+          {transactions.map((transaction) => (
+            <div key={transaction.id}>
+              <button onClick={() => handleEditTransactionStart(transaction)}>Edit</button>
+              <button onClick={() => {
+                if (transaction.id !== null) {
+                  handleDeleteTransaction(transaction.id);
+                }
+              }}>Delete</button>
+            </div>
+          ))}
+          <button onClick={() => setShowPopup(false)}>Close</button>
+        </div>
+      )}
     </div>
   );
 }
+
+
 
 export default App;
