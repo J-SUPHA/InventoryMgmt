@@ -30,6 +30,17 @@ impl From<AppError> for tauri::InvokeError {
     }
 }
 
+#[derive(Debug, Clone,serde::Serialize,serde::Deserialize)]
+struct AllTransactions {
+    id: i32,
+    quantity: f64,
+    price_per_ton: Option<f64>,
+    orig_price: Option<f64>,
+    sell_price: Option<f64>,
+    liquidation_date: Option<String>,
+    purchase_date: Option<String>,
+    is_used: bool,
+}
 
 #[derive(Debug, Clone,serde::Serialize,serde::Deserialize)]
 pub struct Spec {
@@ -140,7 +151,56 @@ pub fn connect_and_setup_db() -> Result<Connection> {
     Ok(conn)
 }
 
-// Adjusted to accept date_time as a parameter in the format "DD-MM-YYYY HH:MM:SS"
+
+#[tauri::command]
+fn redo_transactions() -> Result<(), AppError> {
+    let conn = connect_and_setup_db()?;
+    conn.execute("DELETE FROM timber_purchases", [])?;
+    conn.execute("DELETE FROM used_timber", [])?;
+
+    // Step 2: Iterate through all_transactions table
+    let mut stmt = conn.prepare("SELECT * FROM all_transactions")?;
+    let transaction_iter = stmt.query_map([], |row| {
+        Ok(AllTransactions {
+            id: row.get(0)?,
+            quantity: row.get(1)?,
+            price_per_ton: row.get(2)?,
+            orig_price: row.get(3)?,
+            sell_price: row.get(4)?,
+            liquidation_date: row.get(5)?,
+            purchase_date: row.get(6)?,
+            is_used: row.get(7)?,
+        })
+    })?;
+
+    for transaction in transaction_iter {
+        let txn = transaction?;
+        if !txn.is_used {
+            // Convert purchase_date to DateTime
+            if let Some(date_str) = txn.purchase_date {
+                match DateTime::from_string(&date_str) {
+                    Ok(date_time) => {
+                        let _ = record_purchase(txn.quantity as f32, txn.price_per_ton.unwrap_or(0.0), date_time);
+                        // Handle error or log as needed
+                    },
+                    Err(e) => println!("Error parsing date: {}", e), // Handle or log the error as needed
+                }
+            }
+        } else {
+            // Convert liquidation_date to DateTime
+            if let Some(date_str) = txn.liquidation_date {
+                match DateTime::from_string(&date_str) {
+                    Ok(date_time) => {
+                        let _ = use_tao(txn.quantity as f32, date_time, txn.sell_price.unwrap_or(0.0));
+                        // Handle Result<Vec<Spec>, AppError> as needed
+                    },
+                    Err(e) => println!("Error parsing date: {}", e), // Handle or log the error as needed
+                }
+            }
+        }
+    }
+    Ok(())
+}
 
 #[tauri::command]
 fn record_purchase(quantity: f32, price_per_ton: f64, date_time: DateTime) -> String {
@@ -345,13 +405,13 @@ fn use_tao(quantity_needed: f32, liquidation_date_time: DateTime, selling_price 
     }
     let mut remaining_quantity = quantity_needed;
     let mut used_timber = Vec::new();
-    let mut style: i64 = conn.query_row(
+    let style: i64 = conn.query_row(
         "SELECT usage_type FROM app_settings WHERE id = 1", 
         [], 
         |row| row.get(0)
     )?;
 
-    let mut stmt = match(style) {
+    let mut stmt = match style {
         1 => conn.prepare("SELECT id, quantity, price_per_ton FROM timber_purchases ORDER BY purchase_date ASC")?, // FIFO Implementation
         2 => conn.prepare("SELECT id, quantity, price_per_ton FROM timber_purchases ORDER BY purchase_date DESC")?, // LIFO Implementation
         3 => conn.prepare("SELECT id, quantity, price_per_ton FROM timber_purchases ORDER BY price_per_ton ASC")?, // LOFO Implementation
@@ -507,7 +567,7 @@ fn write_used_timber(conn: &Connection, sheet: &mut Worksheet) -> Result<(), App
 
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![greet, record_purchase, print_inventory, print_inventory_used, use_tao, write_inventory_to_excel, inventory_statistics])
+        .invoke_handler(tauri::generate_handler![greet, record_purchase, print_inventory, print_inventory_used, use_tao, write_inventory_to_excel, inventory_statistics, redo_transactions, add_transaction, remove_transaction_via_id, add_transaction, edit_transaction_via_id])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
